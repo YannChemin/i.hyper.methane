@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>i.hyper.methane - GRASS GIS manual</title>
+<meta charset="utf-8">
+</head>
+<body>
+
+<h2>DESCRIPTION</h2>
+
+<p><em>i.hyper.methane</em> computes a methane (CH4) absorption band-depth
+proxy index from hyperspectral imagery imported as 3D raster maps
+(<code>raster_3d</code>) by
+<a href="i.hyper.import.html">i.hyper.import</a>.</p>
+
+<p>The module locates three bands in the input cube's SWIR range: two
+continuum "shoulder" bands (<em>left_shoulder</em>, <em>right_shoulder</em>,
+default 2120 nm / 2400 nm) that bracket the CH4 absorption doublet, and
+one absorption band (<em>absorption_wavelength</em>, default 2298 nm, the
+strongest CH4 feature in that region). It linearly interpolates a
+continuum reflectance between the two shoulders at the absorption
+wavelength, then computes:</p>
+
+<pre>
+band_depth = 1 - (R_absorption / R_continuum)
+</pre>
+
+<p>Values near 0 indicate no CH4 absorption signature (continuum-level
+reflectance); larger positive values indicate stronger absorption,
+consistent with elevated methane along the sensor-to-surface path.</p>
+
+<p><em>i.hyper.methane</em> is part of the <b>i.hyper</b> module family. It
+was built for flagging candidate methane hotspots (e.g. near oil/gas
+infrastructure) in hyperspectral scenes, as a companion to the
+coarser-resolution, column-retrieval-based Sentinel-5P methane mapping
+done outside GRASS by the ALMA Energy toolset's
+<code>05_methane_hotspots</code> script.</p>
+
+<h2>NOTES</h2>
+
+<p><b>This module computes a relative band-depth proxy, not a calibrated
+methane column retrieval.</b> A quantitative retrieval (e.g. in ppm-m)
+requires a matched-filter against a unit absorption spectrum together
+with a scene background covariance model -- the approach used by, for
+example, EMIT's own CH4 plume product. That is a substantially larger
+undertaking than this module attempts. Use <em>i.hyper.methane</em>'s
+output to flag and rank candidate hotspot locations for further
+investigation, not as an absolute methane concentration.</p>
+
+<p>The module expects the input 3D raster to carry per-band wavelength
+metadata, following the same convention as the rest of the <em>i.hyper</em>
+family (an <em>i.hyper.import</em> <code>hyper.json</code> sidecar, or
+<b>wavelength</b>/<b>unit</b> in each band's <code>r3.support</code>
+history). If no band lies within <em>tolerance</em> nanometers of a
+requested wavelength, the module fails with <code>G_fatal_error</code>
+rather than silently substituting a mismatched band -- this typically
+means the input's SWIR coverage does not reach the CH4 absorption region
+near 2100-2400 nm.</p>
+
+<h2>EXAMPLE</h2>
+
+<p>Compute a methane band-depth index from a hyperspectral cube imported
+by <em>i.hyper.import</em>, using the default absorption/shoulder
+wavelengths:</p>
+
+<div class="code"><pre>
+i.hyper.methane input=emit_scene output=emit_ch4_depth
+</pre></div>
+
+<p>Using a narrower continuum window and a stricter wavelength-matching
+tolerance:</p>
+
+<div class="code"><pre>
+i.hyper.methane input=emit_scene output=emit_ch4_depth \
+    left_shoulder=2150 right_shoulder=2350 tolerance=8
+</pre></div>
+
+<h2>SEE ALSO</h2>
+
+<p>
+<a href="i.hyper.import.html">i.hyper.import</a>,
+<a href="i.hyper.continuum.html">i.hyper.continuum</a>,
+<a href="i.hyper.indices.html">i.hyper.indices</a>,
+<a href="https://grass.osgeo.org/grass-stable/manuals/r.mapcalc.html">r.mapcalc</a>,
+<a href="https://grass.osgeo.org/grass-stable/manuals/r3.support.html">r3.support</a>
+</p>
+
+<h2>REFERENCES</h2>
+
+<ul>
+  <li>Thompson, D. R., et al. (2015). Real-time remote detection and
+    measurement for airborne imaging spectroscopy: a case study with
+    methane. <em>Atmospheric Measurement Techniques</em>, 8(10), 4383-4397.</li>
+  <li>Thorpe, A. K., et al. (2013). Retrieval techniques for airborne
+    imaging of methane concentrations using high spatial and moderate
+    spectral resolution: application to AVIRIS. <em>Atmospheric
+    Measurement Techniques</em>, 6(12), 3527-3546.</li>
+</ul>
+
+<h2>AUTHORS</h2>
+
+<p>Created for the i.hyper module family, ALMA Energy project</p>
+
+</body>
+</html>
