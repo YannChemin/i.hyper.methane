@@ -8,71 +8,109 @@
 
 <h2>DESCRIPTION</h2>
 
-<p><em>i.hyper.methane</em> computes a methane (CH4) absorption band-depth
-proxy index from hyperspectral imagery imported as 3D raster maps
+<p><em>i.hyper.methane</em> computes a methane (CH4) matched-filter
+enhancement map from hyperspectral imagery imported as 3D raster maps
 (<code>raster_3d</code>) by
 <a href="i.hyper.import.html">i.hyper.import</a>.</p>
 
-<p>The module locates three bands in the input cube's SWIR range: two
-continuum "shoulder" bands (<em>left_shoulder</em>, <em>right_shoulder</em>,
-default 2120 nm / 2400 nm) that bracket the CH4 absorption doublet, and
-one absorption band (<em>absorption_wavelength</em>, default 2298 nm, the
-strongest CH4 feature in that region). It linearly interpolates a
-continuum reflectance between the two shoulders at the absorption
-wavelength, then computes:</p>
+<p>The module selects all bands of the input cube whose wavelength falls
+within a SWIR spectral window (<em>left_shoulder</em> to
+<em>right_shoulder</em>, default 2120-2400 nm, bracketing the CH4
+absorption doublet), then applies a background-covariance matched filter
+(Thorpe et al. 2013, Thompson et al. 2015) across that window:</p>
 
 <pre>
-band_depth = 1 - (R_absorption / R_continuum)
+alpha(x) = (x - mu)^T C^-1 t / (t^T C^-1 t)
 </pre>
 
-<p>Values near 0 indicate no CH4 absorption signature (continuum-level
-reflectance); larger positive values indicate stronger absorption,
-consistent with elevated methane along the sensor-to-surface path.</p>
+<p>where, for each pixel's radiance vector <em>x</em> over the selected
+bands:</p>
+
+<ul>
+  <li><em>mu</em> is the scene background mean radiance spectrum,</li>
+  <li><em>C</em> is the background covariance matrix of (x - mu) across
+    the scene, regularized with a diagonal loading term controlled by
+    <em>shrinkage</em>,</li>
+  <li><em>t = -mu * k</em> is the target signature, the linearized
+    (optically-thin) radiance perturbation expected per unit methane
+    path-concentration enhancement, built from a unit absorption-strength
+    template <em>k</em> (peak-normalized to 1).</li>
+</ul>
+
+<p>By default, <em>k</em> is a synthetic Gaussian centered at
+<em>absorption_wavelength</em> (default 2298 nm, the strongest CH4
+feature in this region) with full-width-at-half-maximum
+<em>template_fwhm</em> (default 40 nm) -- a simplified stand-in for a real
+gas cross-section curve. For a more physically faithful retrieval, supply
+<em>absorption_spectrum</em>: a two-column text file (wavelength_nm,
+absorption) with a real CH4 unit absorption spectrum (e.g. derived from
+HITRAN, or the "unit spectrum of methane absorption" used in
+matched-filter literature); the module interpolates it onto the input's
+own band wavelengths.</p>
+
+<p><em>alpha</em> is a relative enhancement statistic: values near 0
+indicate no detected CH4 signature; larger positive values indicate
+stronger correlation with the absorption template, consistent with
+elevated methane along the sensor-to-surface path.</p>
 
 <p><em>i.hyper.methane</em> is part of the <b>i.hyper</b> module family. It
 was built for flagging candidate methane hotspots (e.g. near oil/gas
-infrastructure) in hyperspectral scenes, as a companion to the
-coarser-resolution, column-retrieval-based Sentinel-5P methane mapping
-done outside GRASS by the ALMA Energy toolset's
-<code>05_methane_hotspots</code> script.</p>
+infrastructure or palm oil mill effluent ponds) in hyperspectral scenes,
+as a companion to the coarser-resolution, column-retrieval-based
+Sentinel-5P methane mapping done outside GRASS by the ALMA Energy
+toolset's <code>05_methane_hotspots</code> script.</p>
 
 <h2>NOTES</h2>
 
-<p><b>This module computes a relative band-depth proxy, not a calibrated
-methane column retrieval.</b> A quantitative retrieval (e.g. in ppm-m)
-requires a matched-filter against a unit absorption spectrum together
-with a scene background covariance model -- the approach used by, for
-example, EMIT's own CH4 plume product. That is a substantially larger
-undertaking than this module attempts. Use <em>i.hyper.methane</em>'s
-output to flag and rank candidate hotspot locations for further
-investigation, not as an absolute methane concentration.</p>
+<p><b>This module computes a matched-filter enhancement statistic, not
+necessarily a radiometrically calibrated ppm-m column retrieval.</b> Its
+output is directly comparable in <em>relative</em> terms across a scene
+(larger alpha = stronger CH4 signature), and is substantially more
+sensitive and robust to background surface variability than a simple
+two-shoulder band-depth ratio, because it exploits the full spectral
+window and the scene's own background covariance rather than three
+isolated bands. If <em>absorption_spectrum</em> supplies a unit absorption
+spectrum in properly scaled physical units (e.g. from a full
+radiative-transfer model, as used operationally by EMIT's own CH4 plume
+product), <em>alpha</em> approximates a ppm-m enhancement; with the
+default synthetic Gaussian template it should be treated as a relative
+ranking statistic only.</p>
+
+<p>Because the retrieval whitens against the scene's own background
+covariance, it is more susceptible to including plume-affected pixels
+within the "background" mean/covariance estimate for scenes with very
+large or pervasive plumes; for such cases consider excluding known plume
+regions before running the module, or iterating (mask flagged hotspots,
+recompute).</p>
 
 <p>The module expects the input 3D raster to carry per-band wavelength
 metadata, following the same convention as the rest of the <em>i.hyper</em>
 family (an <em>i.hyper.import</em> <code>hyper.json</code> sidecar, or
 <b>wavelength</b>/<b>unit</b> in each band's <code>r3.support</code>
-history). If no band lies within <em>tolerance</em> nanometers of a
-requested wavelength, the module fails with <code>G_fatal_error</code>
-rather than silently substituting a mismatched band -- this typically
-means the input's SWIR coverage does not reach the CH4 absorption region
-near 2100-2400 nm.</p>
+history). If no band lies within <em>tolerance</em> nanometers of
+<em>absorption_wavelength</em>, or if fewer than 5 bands fall within the
+<em>left_shoulder</em>-<em>right_shoulder</em> window, the module fails
+with <code>G_fatal_error</code> rather than silently proceeding with
+insufficient spectral coverage -- this typically means the input's SWIR
+coverage does not reach the CH4 absorption region near 2100-2400 nm.</p>
 
 <h2>EXAMPLE</h2>
 
-<p>Compute a methane band-depth index from a hyperspectral cube imported
-by <em>i.hyper.import</em>, using the default absorption/shoulder
-wavelengths:</p>
+<p>Compute a methane matched-filter enhancement from a hyperspectral cube
+imported by <em>i.hyper.import</em>, using the default synthetic
+absorption template:</p>
 
 <div class="code"><pre>
-i.hyper.methane input=emit_scene output=emit_ch4_depth
+i.hyper.methane input=emit_scene output=emit_ch4_mf
 </pre></div>
 
-<p>Using a narrower continuum window and a stricter wavelength-matching
-tolerance:</p>
+<p>Using a real unit absorption spectrum and a narrower matched-filter
+window:</p>
 
 <div class="code"><pre>
-i.hyper.methane input=emit_scene output=emit_ch4_depth \
-    left_shoulder=2150 right_shoulder=2350 tolerance=8
+i.hyper.methane input=emit_scene output=emit_ch4_mf \
+    absorption_spectrum=ch4_unit_absorption.txt \
+    left_shoulder=2150 right_shoulder=2350
 </pre></div>
 
 <h2>SEE ALSO</h2>
